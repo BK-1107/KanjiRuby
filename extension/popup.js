@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggle = document.getElementById('enableToggle');
     const globalToggle = document.getElementById('globalToggle');
     const translateToggle = document.getElementById('translateToggle');
+    const doubleTapToggle = document.getElementById('doubleTapToggle');
     const clearBtn = document.getElementById('clearBtn');
     const statusMessage = document.getElementById('statusMessage');
 
@@ -25,15 +26,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Load current state
-    chrome.storage.sync.get(['enabled', 'globalEnabled', 'translateEnabled'], (result) => {
+    chrome.storage.sync.get(['enabled', 'globalEnabled', 'translateEnabled', 'doubleTapEnabled'], (result) => {
         // Default values
         const isEnabled = result.enabled !== false;
         const isGlobalEnabled = result.globalEnabled === true;
         const isTranslateEnabled = result.translateEnabled !== false; // Default true
+        const isDoubleTapEnabled = result.doubleTapEnabled === true;
         
         toggle.checked = isEnabled;
         globalToggle.checked = isGlobalEnabled;
         translateToggle.checked = isTranslateEnabled;
+        doubleTapToggle.checked = isDoubleTapEnabled;
         
         updateStatusUI();
     });
@@ -64,6 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.sync.set({ translateEnabled: translateToggle.checked }, () => {
             updateStatusUI();
         });
+    });
+
+    // Double Tap Translate logic
+    doubleTapToggle.addEventListener('change', () => {
+        chrome.storage.sync.set({ doubleTapEnabled: doubleTapToggle.checked });
     });
 });
 

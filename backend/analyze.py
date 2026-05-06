@@ -49,8 +49,21 @@ def analyze_text(text: str):
     result = []
 
     # 使用 tagger 对文本进行分词
-    # tagger(text) 返回一个可迭代的 word 对象列表
+    # tagger(text) 返回一个可迭代 of word 对象列表
     for word in tagger(text):
+        # 提取前置空白字符（如空格、换行），防止丢失排版结构
+        ws = getattr(word, "white_space", "")
+        if ws:
+            result.append({
+                "surface": ws,
+                "reading": ws,
+                "pos": "空白",
+                "has_kanji": False,
+                "ruby": False,
+                "selected": False,
+                "translation": None
+            })
+
         # surface: 单词的表面形式 (即原文中的写法)
         surface = word.surface
 

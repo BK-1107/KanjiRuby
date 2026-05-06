@@ -1,6 +1,4 @@
 @echo off
-title KanjiRuby Backend
+title KanjiRuby Launcher
 echo Starting KanjiRuby Backend Service...
-echo.
-python main.py
-pause
+start "KanjiRuby Backend" cmd /c "python main.py"

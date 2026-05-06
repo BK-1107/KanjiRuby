@@ -1,113 +1,122 @@
-// content.js - Day 4: DOM Replacement Implementation
+// content.js - Robust Implementation with Background Proxy
 
 let isEnabled = true;
 let translateEnabled = false;
-let globalEnabled = false; // 新增：追踪全局模式状态
+let globalEnabled = false; 
+let doubleTapEnabled = false; 
 
-// 初始化时获取状态
-chrome.storage.sync.get(['enabled', 'translateEnabled', 'globalEnabled'], (result) => {
+let lastCtrlPressTime = 0;
+
+// 初始化获取状态
+chrome.storage.sync.get(['enabled', 'translateEnabled', 'globalEnabled', 'doubleTapEnabled'], (result) => {
     isEnabled = result.enabled !== false;
-    // 默认开启翻译，方便用户直接体验
-    translateEnabled = result.translateEnabled !== false; 
+    translateEnabled = result.translateEnabled === true; // 修改默认值为 false，尊重用户习惯
     globalEnabled = result.globalEnabled === true;
+    doubleTapEnabled = result.doubleTapEnabled === true;
 });
 
 // 监听状态变化
 chrome.storage.onChanged.addListener((changes) => {
-    if (changes.enabled) {
-        isEnabled = changes.enabled.newValue !== false;
-    }
-    if (changes.translateEnabled) {
-        translateEnabled = changes.translateEnabled.newValue === true;
-    }
-    if (changes.globalEnabled) {
-        globalEnabled = changes.globalEnabled.newValue === true;
-    }
+    if (changes.enabled) isEnabled = changes.enabled.newValue !== false;
+    if (changes.translateEnabled) translateEnabled = changes.translateEnabled.newValue === true;
+    if (changes.globalEnabled) globalEnabled = changes.globalEnabled.newValue === true;
+    if (changes.doubleTapEnabled) doubleTapEnabled = changes.doubleTapEnabled.newValue === true;
 });
 
-// 监听来自 popup 的指令
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'startGlobalAnnotation') {
-        annotateAllKanji();
-    } else if (request.action === 'clearAllAnnotations') {
-        clearAllAnnotations();
+// 辅助函数：显示通知弹窗
+function showToast(message, isEnabled) {
+    let toast = document.getElementById('kanjiruby-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'kanjiruby-toast';
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            padding: 12px 24px;
+            border-radius: 12px;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 2147483647;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px);
+        `;
+        document.body.appendChild(toast);
     }
-});
+    
+    toast.textContent = message;
+    // 使用冷色调（深灰蓝/深灰红），并增加透明度
+    toast.style.backgroundColor = isEnabled ? 'rgba(45, 100, 150, 0.85)' : 'rgba(100, 60, 60, 0.85)';
+    toast.style.backdropFilter = 'blur(8px)'; // 增加毛玻璃效果，更高级
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    
+    if (window._kanjiToastTimer) clearTimeout(window._kanjiToastTimer);
+    window._kanjiToastTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+    }, 1000);
+}
+
+// 封装 API 请求函数，通过后台脚本中转
+function callAnalyzeAPI(text, needTranslation) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+            action: 'fetchAnalyze',
+            data: { text: text, need_translation: needTranslation }
+        }, (response) => {
+            if (response && response.success) resolve(response.data);
+            else reject(new Error(response ? response.error : 'Unknown error'));
+        });
+    });
+}
 
 /**
  * 全网页注音逻辑
  */
 async function annotateAllKanji() {
     console.log("🚀 开始全网页分析...");
-    
-    // 1. 查找所有包含汉字的文本节点
     const textNodes = [];
-    const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        {
-            acceptNode: (node) => {
-                // 排除已处理过的、不可见的或特定标签内的文本
-                const parent = node.parentElement;
-                if (!parent) return NodeFilter.FILTER_REJECT;
-                
-                const tagName = parent.tagName.toLowerCase();
-                const ignoredTags = ['script', 'style', 'textarea', 'ruby', 'rt', 'rp', 'input', 'code', 'pre'];
-                
-                if (ignoredTags.includes(tagName)) return NodeFilter.FILTER_REJECT;
-                if (parent.closest('ruby')) return NodeFilter.FILTER_REJECT;
-                
-                // 检查是否包含汉字
-                if (/[\u4e00-\u9fa5]/.test(node.textContent)) {
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-                return NodeFilter.FILTER_SKIP;
-            }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => {
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+            const tagName = parent.tagName.toLowerCase();
+            const ignoredTags = ['script', 'style', 'textarea', 'ruby', 'rt', 'rp', 'input', 'code', 'pre'];
+            if (ignoredTags.includes(tagName)) return NodeFilter.FILTER_REJECT;
+            if (parent.closest('ruby')) return NodeFilter.FILTER_REJECT;
+            if (/[\u4e00-\u9fa5]/.test(node.textContent)) return NodeFilter.FILTER_ACCEPT;
+            return NodeFilter.FILTER_SKIP;
         }
-    );
+    });
 
     let node;
-    while (node = walker.nextNode()) {
-        textNodes.push(node);
-    }
+    while (node = walker.nextNode()) textNodes.push(node);
+    console.log(`[Global] 找到 ${textNodes.length} 个文本节点`);
 
-    console.log(`[Global] 找到 ${textNodes.length} 个待处理文本节点`);
-
-    // 2. 分批处理 (每批 10 个节点，避免请求过大或频率过高)
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = 5; // 减小批大小，提高稳定性
     for (let i = 0; i < textNodes.length; i += BATCH_SIZE) {
         const batch = textNodes.slice(i, i + BATCH_SIZE);
-        
-        // 并发处理这一批次
         await Promise.all(batch.map(async (textNode) => {
             const originalText = textNode.textContent.trim();
             if (!originalText) return;
-
             try {
-                const response = await fetch('http://127.0.0.1:18000/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: originalText })
-                });
-
-                if (!response.ok) return;
-                const data = await response.json();
-                let tokens = data;
-                if (data.tokens) {
-                    tokens = data.tokens;
-                }
+                const data = await callAnalyzeAPI(originalText, false);
+                const tokens = data.tokens || data;
                 if (!Array.isArray(tokens)) return;
 
-                // 构建 Ruby 片段
                 const fragment = document.createDocumentFragment();
                 tokens.forEach(token => {
                     if (token.ruby) {
                         const rubyEl = document.createElement('ruby');
                         rubyEl.appendChild(document.createTextNode(token.surface));
                         const rtEl = document.createElement('rt');
-                        rtEl.style.userSelect = 'none';
-                        rtEl.style.webkitUserSelect = 'none';
-                        rtEl.style.pointerEvents = 'none';
+                        rtEl.style.cssText = "user-select:none; -webkit-user-select:none; pointer-events:none;";
                         rtEl.textContent = token.reading;
                         rubyEl.appendChild(rtEl);
                         fragment.appendChild(rubyEl);
@@ -115,190 +124,129 @@ async function annotateAllKanji() {
                         fragment.appendChild(document.createTextNode(token.surface));
                     }
                 });
-
-                // 如果开启了翻译模式且在全局模式下（可选：全局模式下显示翻译可能会让页面很乱）
-                // 这里暂时不在全局模式下显示翻译，除非用户强烈要求
-                
-                // 替换节点
-                if (textNode.parentNode) {
-                    textNode.parentNode.replaceChild(fragment, textNode);
-                }
-            } catch (err) {
-                console.error("[Global] 分析节点失败:", err);
-            }
+                if (textNode.parentNode) textNode.parentNode.replaceChild(fragment, textNode);
+            } catch (err) { console.warn("[Global] 节点处理跳过:", err); }
         }));
-        
-        // 稍微停顿一下，给浏览器喘息机会
-        await new Promise(r => setTimeout(r, 50));
     }
-
-    console.log("✅ 全网页分析完成");
+    console.log("✅ 全网页标注完成");
 }
 
-/**
- * 清除页面上所有的注音和翻译，恢复原样
- */
 function clearAllAnnotations() {
-    // 1. 移除所有翻译容器 (包括我们新版的 span 和旧版的 div)
-    document.querySelectorAll('.jp-ruby-translation').forEach(el => {
-        // 如果翻译是作为 ruby 的 rt 存在的，它会在下一步被 ruby 的还原逻辑处理
-        // 如果它是独立的 div/span，这里直接删除
-        el.remove();
-    });
-
-    // 2. 还原所有 ruby 标签
-    // 我们从 DOM 中找到所有 ruby，将其替换为不含 rt 的纯文本
     const rubies = Array.from(document.querySelectorAll('ruby'));
     rubies.forEach(ruby => {
-        // 创建一个临时容器来提取纯文本（避开 rt 里的假名）
         const clone = ruby.cloneNode(true);
-        const rts = clone.querySelectorAll('rt');
-        rts.forEach(rt => rt.remove());
-        
-        const originalText = clone.textContent;
-        ruby.replaceWith(document.createTextNode(originalText));
+        clone.querySelectorAll('rt').forEach(rt => rt.remove());
+        ruby.replaceWith(document.createTextNode(clone.textContent));
     });
-
-    console.log("🧹 已清除所有注音和翻译");
 }
 
-/**
- * 辅助函数：从 Range 中提取纯文本，忽略 <rt> 标签（避开假名干扰）
- */
 function getCleanTextFromRange(range) {
-    // 克隆选区内容
     const clone = range.cloneContents();
-    // 找到克隆内容中所有的 rt 标签并移除
-    const rts = clone.querySelectorAll('rt');
-    rts.forEach(rt => rt.remove());
-    // 返回清洗后的纯文本
-    return clone.textContent.trim();
+    clone.querySelectorAll('rt').forEach(rt => rt.remove());
+    
+    function extractText(node) {
+        if (node.nodeType === 3) return node.textContent;
+        let text = "";
+        const blockTags = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TR', 'ARTICLE', 'SECTION']);
+        if (node.nodeName === 'BR') return "\n";
+        for (const child of node.childNodes) text += extractText(child);
+        if (node.nodeType === 1 && blockTags.has(node.nodeName)) text += "\n\n";
+        return text;
+    }
+    return extractText(clone).trim().replace(/\n{3,}/g, '\n\n');
 }
 
-document.addEventListener('mouseup', async () => {
-    // 如果两个功能都禁用了，则不执行逻辑
-    if (!isEnabled && !translateEnabled) return;
-
-    // 1. 获取选区对象
-    const selection = window.getSelection();
-    if (selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0);
-
-    // 2. 提取并清洗文本（如果选中了已注音的文字，去掉假名）
+async function processSelection(range, forceTranslate = false) {
     const text = getCleanTextFromRange(range);
-
-    // 如果没选中东西，直接返回
     if (!text) return;
-
-    // --- 修复叠加 Bug：对齐选区边界 ---
-    // 如果选区的起点或终点在 ruby 内部，我们要把边界向外扩展到 ruby 的边缘
-    // 这样 deleteContents() 就能干净地移除旧的注音结构
-    
-    // 辅助函数：找到最外层的 ruby 容器
-    const getTopRuby = (node) => {
-        let el = node.nodeType === 3 ? node.parentElement : node;
-        let ruby = el.closest('ruby');
-        if (ruby) {
-            while (ruby.parentElement && ruby.parentElement.closest('ruby')) {
-                ruby = ruby.parentElement.closest('ruby');
-            }
-        }
-        return ruby;
-    };
-
-    let startRuby = getTopRuby(range.startContainer);
-    if (startRuby) range.setStartBefore(startRuby);
-
-    let endRuby = getTopRuby(range.endContainer);
-    if (endRuby) range.setEndAfter(endRuby);
-    // -----------------------------------
-
-    // 防重复处理：
-    // 如果“注音”和“翻译”都关了，或者选区为空，则退出
-
-    console.log("👉 正在请求分析:", text);
+    if (!isEnabled && !translateEnabled && !forceTranslate) return;
 
     try {
-        // 3. 调用后端 API
-        const response = await fetch('http://127.0.0.1:18000/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                text: text,
-                need_translation: translateEnabled // 只有开启时才请求翻译，节省性能
-            })
-        });
+        const data = await callAnalyzeAPI(text, forceTranslate || translateEnabled);
+        const tokens = data.tokens || [];
+        const translation = data.full_translation;
 
-        const data = await response.json();
-        let tokens = data;
-        let translation = "";
-        if (data.tokens) {
-            tokens = data.tokens;
-            translation = data.full_translation;
-        }
-        
-        if (!Array.isArray(tokens)) {
-            console.error("❌ 数据格式错误", data);
-            return;
-        }
-        console.log("✅收到数据:", data);
-
-        // 4. 构建新的 HTML 片段 (DocumentFragment)
         const fragment = document.createDocumentFragment();
-
-        // 创建一个包装容器，用于承载所有选中的词
         const wrapper = document.createElement('span');
         wrapper.style.display = 'inline';
 
         tokens.forEach(token => {
-            // 只要开启了注音功能，或者当前正处于全局注音模式，我们就保留注音
             if ((isEnabled || globalEnabled) && token.ruby) {
                 const rubyEl = document.createElement('ruby');
-                rubyEl.style.rubyPosition = 'over'; // 强制假名在上方
+                rubyEl.style.rubyPosition = 'over';
                 rubyEl.style.webkitRubyPosition = 'over';
                 rubyEl.innerHTML = `${token.surface}<rt style="user-select:none; -webkit-user-select:none; pointer-events:none;">${token.reading}</rt>`;
                 wrapper.appendChild(rubyEl);
             } else {
-                wrapper.appendChild(document.createTextNode(token.surface));
+                const parts = (token.surface || "").split('\n');
+                parts.forEach((part, index) => {
+                    if (part) wrapper.appendChild(document.createTextNode(part));
+                    if (index < parts.length - 1) wrapper.appendChild(document.createElement('br'));
+                });
             }
         });
 
-        // 如果开启了翻译模式，将整个 wrapper 再次包装进一个 ruby 中，实现“下方注音”
-        if (translateEnabled && translation) {
+        if ((forceTranslate || translateEnabled) && translation) {
             const outerRuby = document.createElement('ruby');
-            outerRuby.style.rubyPosition = 'under'; // 关键：注音显示在下方
-            // 某些浏览器需要这个前缀或特定写法
+            outerRuby.style.rubyPosition = 'under';
             outerRuby.style.webkitRubyPosition = 'under'; 
-            
-            // 把刚才构建好的原文/假名放进去
             outerRuby.appendChild(wrapper);
-            
-            // 创建翻译用的 rt
             const rtTrans = document.createElement('rt');
-            rtTrans.style.userSelect = 'none';
-            rtTrans.style.webkitUserSelect = 'none';
-            rtTrans.style.pointerEvents = 'none';
-            rtTrans.style.fontSize = '0.75em';
-            rtTrans.style.fontStyle = 'normal';
-            rtTrans.style.display = 'ruby-text';
-            // 不设置特定颜色，使其跟随文本颜色
+            rtTrans.style.cssText = "user-select:none; -webkit-user-select:none; pointer-events:none; font-size:0.75em; font-style:normal; display:ruby-text; color: inherit; opacity: 0.8;";
             rtTrans.textContent = translation;
-            
             outerRuby.appendChild(rtTrans);
             fragment.appendChild(outerRuby);
         } else {
-            // 如果没开翻译，直接把 wrapper 放进 fragment
             fragment.appendChild(wrapper);
         }
 
-        // 5. DOM 替换操作
         range.deleteContents();
         range.insertNode(fragment);
+        window.getSelection().removeAllRanges();
+    } catch (error) { console.error("❌ 处理失败:", error); }
+}
 
-        // 6. 清除选区
-        selection.removeAllRanges();
+document.addEventListener('mouseup', () => {
+    const selection = window.getSelection();
+    if (selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) return;
 
-    } catch (error) {
-        console.error("❌ 处理失败:", error);
+    const getTopRuby = (node) => {
+        let el = node.nodeType === 3 ? node.parentElement : node;
+        let ruby = el ? el.closest('ruby') : null;
+        if (ruby) while (ruby.parentElement && ruby.parentElement.closest('ruby')) ruby = ruby.parentElement.closest('ruby');
+        return ruby;
+    };
+    let sr = getTopRuby(range.startContainer); if (sr) range.setStartBefore(sr);
+    let er = getTopRuby(range.endContainer); if (er) range.setEndAfter(er);
+
+    processSelection(range);
+});
+
+chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === 'startGlobalAnnotation') annotateAllKanji();
+    else if (request.action === 'clearAllAnnotations') clearAllAnnotations();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (!doubleTapEnabled) return;
+    if (e.key === 'Control') {
+        const now = Date.now();
+        if (now - lastCtrlPressTime < 500) {
+            lastCtrlPressTime = 0;
+            const newState = !translateEnabled;
+            chrome.storage.sync.set({ translateEnabled: newState }, () => {
+                // 显示提示弹窗
+                showToast(newState ? "Translation: ON" : "Translation: OFF", newState);
+                
+                if (newState) {
+                    const sel = window.getSelection();
+                    if (sel.rangeCount > 0 && sel.toString().trim()) {
+                        processSelection(sel.getRangeAt(0), true);
+                    }
+                }
+            });
+        } else { lastCtrlPressTime = now; }
     }
 });
