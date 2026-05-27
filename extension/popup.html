@@ -17,41 +17,24 @@
             <section class="settings-stack" aria-label="Annotation settings">
                 <div class="setting-item">
                     <div class="setting-info">
-                        <span class="setting-title">Selection Mode</span>
-                        <span class="setting-desc">Annotate text on selection</span>
+                        <span class="setting-title">Kana Notes</span>
+                        <span class="setting-desc">Annotates selected text with kana by default</span>
                     </div>
-                    <label class="switch">
-                        <input type="checkbox" id="enableToggle" checked>
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-info">
-                        <span class="setting-title">Global Mode</span>
-                        <span class="setting-desc">Annotate the entire page</span>
+                    <div class="setting-actions">
+                        <button id="globalAnnotateBtn" class="icon-btn" title="Annotate entire page" aria-label="Annotate entire page">Page</button>
+                        <label class="switch">
+                            <input type="checkbox" id="enableToggle" checked>
+                            <span class="slider round"></span>
+                        </label>
                     </div>
-                    <label class="switch">
-                        <input type="checkbox" id="globalToggle">
-                        <span class="slider round"></span>
-                    </label>
                 </div>
                 <div class="setting-item">
                     <div class="setting-info">
                         <span class="setting-title">Translation Mode</span>
-                        <span class="setting-desc">Show immersive translation</span>
+                        <span class="setting-desc">Show immersive translation. Double tap Ctrl to toggle quickly.</span>
                     </div>
                     <label class="switch">
                         <input type="checkbox" id="translateToggle">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-info">
-                        <span class="setting-title">Double-Tap Shortcut</span>
-                        <span class="setting-desc">Double tap Ctrl to toggle translation</span>
-                    </div>
-                    <label class="switch">
-                        <input type="checkbox" id="doubleTapToggle">
                         <span class="slider round"></span>
                     </label>
                 </div>
@@ -63,14 +46,13 @@
                         <span class="setting-title">Double-Shift TTS</span>
                         <span class="setting-desc">Double tap Shift to read selected Japanese</span>
                     </div>
-                    <label class="switch">
-                        <input type="checkbox" id="ttsToggle">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                <div class="button-row">
-                    <button id="readSelectionBtn" class="primary-btn">Read Selection</button>
-                    <button id="stopSpeechBtn" class="secondary-btn compact">Stop</button>
+                    <div class="setting-actions">
+                        <button id="stopSpeechBtn" class="icon-btn" title="Stop reading" aria-label="Stop reading">Stop</button>
+                        <label class="switch">
+                            <input type="checkbox" id="ttsToggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
                 </div>
             </section>
         </main>

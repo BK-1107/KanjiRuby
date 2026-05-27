@@ -1,10 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     const toggle = document.getElementById('enableToggle');
-    const globalToggle = document.getElementById('globalToggle');
+    const globalAnnotateBtn = document.getElementById('globalAnnotateBtn');
     const translateToggle = document.getElementById('translateToggle');
-    const doubleTapToggle = document.getElementById('doubleTapToggle');
     const ttsToggle = document.getElementById('ttsToggle');
-    const readSelectionBtn = document.getElementById('readSelectionBtn');
     const stopSpeechBtn = document.getElementById('stopSpeechBtn');
     const clearBtn = document.getElementById('clearBtn');
     const statusMessage = document.getElementById('statusMessage');
@@ -52,24 +50,28 @@ document.addEventListener('DOMContentLoaded', () => {
         'ttsEnabled'
     ], (result) => {
         toggle.checked = result.enabled !== false;
-        globalToggle.checked = result.globalEnabled === true;
         translateToggle.checked = result.translateEnabled === true;
-        doubleTapToggle.checked = result.doubleTapEnabled === true;
         ttsToggle.checked = result.ttsEnabled !== false;
 
+        chrome.storage.sync.set({
+            doubleTapEnabled: true,
+            globalEnabled: false
+        });
         updateStatusUI();
     });
 
     toggle.addEventListener('change', () => {
-        chrome.storage.sync.set({ enabled: toggle.checked }, updateStatusUI);
+        chrome.storage.sync.set({
+            enabled: toggle.checked,
+            globalEnabled: false
+        }, updateStatusUI);
     });
 
-    globalToggle.addEventListener('change', () => {
-        const isGlobalEnabled = globalToggle.checked;
-        chrome.storage.sync.set({ globalEnabled: isGlobalEnabled }, () => {
-            if (isGlobalEnabled) {
-                sendActiveTabMessage({ action: 'startGlobalAnnotation' });
-            }
+    globalAnnotateBtn.addEventListener('click', () => {
+        chrome.storage.sync.set({ enabled: true, globalEnabled: false }, () => {
+            toggle.checked = true;
+            updateStatusUI();
+            sendActiveTabMessage({ action: 'startGlobalAnnotation' }, 'Page annotation sent');
         });
     });
 
@@ -77,16 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.sync.set({ translateEnabled: translateToggle.checked }, updateStatusUI);
     });
 
-    doubleTapToggle.addEventListener('change', () => {
-        chrome.storage.sync.set({ doubleTapEnabled: doubleTapToggle.checked });
-    });
-
     ttsToggle.addEventListener('change', () => {
         chrome.storage.sync.set({ ttsEnabled: ttsToggle.checked }, updateStatusUI);
-    });
-
-    readSelectionBtn.addEventListener('click', () => {
-        sendActiveTabMessage({ action: 'readSelectionAloud' }, 'Reading request sent');
     });
 
     stopSpeechBtn.addEventListener('click', () => {

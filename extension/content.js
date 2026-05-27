@@ -13,9 +13,9 @@ let lastReadableSelectionText = "";
 // 初始化获取状态
 chrome.storage.sync.get(['enabled', 'translateEnabled', 'globalEnabled', 'doubleTapEnabled', 'ttsEnabled'], (result) => {
     isEnabled = result.enabled !== false;
-    translateEnabled = result.translateEnabled === true; // 修改默认值为 false，尊重用户习惯
+    translateEnabled = result.translateEnabled === true;
     globalEnabled = result.globalEnabled === true;
-    doubleTapEnabled = result.doubleTapEnabled === true;
+    doubleTapEnabled = result.doubleTapEnabled !== false;
     ttsEnabled = result.ttsEnabled !== false;
 });
 
