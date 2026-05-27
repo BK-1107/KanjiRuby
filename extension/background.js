@@ -15,4 +15,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
         return true; // 保持通道开启以进行异步响应
     }
+
+    if (request.action === 'speakText') {
+        const text = (request.text || '').trim();
+        if (!text) {
+            sendResponse({ success: false, error: 'No text to read' });
+            return false;
+        }
+        if (!chrome.tts) {
+            sendResponse({ success: false, error: 'Chrome TTS API is unavailable' });
+            return false;
+        }
+
+        chrome.tts.stop();
+        chrome.tts.speak(text, {
+            lang: 'ja-JP',
+            rate: request.rate || 0.9,
+            pitch: request.pitch || 1.0,
+            enqueue: false
+        }, () => {
+            const error = chrome.runtime.lastError;
+            if (error) sendResponse({ success: false, error: error.message });
+            else sendResponse({ success: true });
+        });
+        return true;
+    }
+
+    if (request.action === 'stopSpeech') {
+        if (!chrome.tts) {
+            sendResponse({ success: false, error: 'Chrome TTS API is unavailable' });
+            return false;
+        }
+        chrome.tts.stop();
+        sendResponse({ success: true });
+        return false;
+    }
 });

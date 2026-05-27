@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JP Ruby Settings</title>
     <link rel="stylesheet" href="popup.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
@@ -15,46 +14,65 @@
         </header>
         
         <main>
-            <div class="setting-item">
-                <div class="setting-info">
-                    <span class="setting-title">Selection Mode</span>
-                    <span class="setting-desc">Annotate text on selection</span>
+            <section class="settings-stack" aria-label="Annotation settings">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-title">Selection Mode</span>
+                        <span class="setting-desc">Annotate text on selection</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="enableToggle" checked>
+                        <span class="slider round"></span>
+                    </label>
                 </div>
-                <label class="switch">
-                    <input type="checkbox" id="enableToggle" checked>
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            <div class="setting-item" style="margin-top: 16px;">
-                <div class="setting-info">
-                    <span class="setting-title">Global Mode</span>
-                    <span class="setting-desc">Annotate the entire page</span>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-title">Global Mode</span>
+                        <span class="setting-desc">Annotate the entire page</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="globalToggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
-                <label class="switch">
-                    <input type="checkbox" id="globalToggle">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            <div class="setting-item" style="margin-top: 16px;">
-                <div class="setting-info">
-                    <span class="setting-title">Translation Mode</span>
-                    <span class="setting-desc">Show immersive translation</span>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-title">Translation Mode</span>
+                        <span class="setting-desc">Show immersive translation</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="translateToggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
-                <label class="switch">
-                    <input type="checkbox" id="translateToggle">
-                    <span class="slider round"></span>
-                </label>
-            </div>
-            <div class="setting-item" style="margin-top: 16px;">
-                <div class="setting-info">
-                    <span class="setting-title">Double-Tap Shortcut</span>
-                    <span class="setting-desc">Double tap Ctrl to toggle Translation Mode</span>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-title">Double-Tap Shortcut</span>
+                        <span class="setting-desc">Double tap Ctrl to toggle translation</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="doubleTapToggle">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
-                <label class="switch">
-                    <input type="checkbox" id="doubleTapToggle">
-                    <span class="slider round"></span>
-                </label>
-            </div>
+            </section>
+
+            <section class="settings-stack tts-panel" aria-label="Speech settings">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <span class="setting-title">Double-Shift TTS</span>
+                        <span class="setting-desc">Double tap Shift to read selected Japanese</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="ttsToggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="button-row">
+                    <button id="readSelectionBtn" class="primary-btn">Read Selection</button>
+                    <button id="stopSpeechBtn" class="secondary-btn compact">Stop</button>
+                </div>
+            </section>
         </main>
 
         <footer>

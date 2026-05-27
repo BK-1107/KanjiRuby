@@ -4,15 +4,19 @@ let isEnabled = true;
 let translateEnabled = false;
 let globalEnabled = false; 
 let doubleTapEnabled = false; 
+let ttsEnabled = false;
 
 let lastCtrlPressTime = 0;
+let lastShiftPressTime = 0;
+let lastReadableSelectionText = "";
 
 // 初始化获取状态
-chrome.storage.sync.get(['enabled', 'translateEnabled', 'globalEnabled', 'doubleTapEnabled'], (result) => {
+chrome.storage.sync.get(['enabled', 'translateEnabled', 'globalEnabled', 'doubleTapEnabled', 'ttsEnabled'], (result) => {
     isEnabled = result.enabled !== false;
     translateEnabled = result.translateEnabled === true; // 修改默认值为 false，尊重用户习惯
     globalEnabled = result.globalEnabled === true;
     doubleTapEnabled = result.doubleTapEnabled === true;
+    ttsEnabled = result.ttsEnabled !== false;
 });
 
 // 监听状态变化
@@ -21,6 +25,7 @@ chrome.storage.onChanged.addListener((changes) => {
     if (changes.translateEnabled) translateEnabled = changes.translateEnabled.newValue === true;
     if (changes.globalEnabled) globalEnabled = changes.globalEnabled.newValue === true;
     if (changes.doubleTapEnabled) doubleTapEnabled = changes.doubleTapEnabled.newValue === true;
+    if (changes.ttsEnabled) ttsEnabled = changes.ttsEnabled.newValue !== false;
 });
 
 // 辅助函数：显示通知弹窗
@@ -76,6 +81,112 @@ function callAnalyzeAPI(text, needTranslation) {
     });
 }
 
+function speakText(text) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+            action: 'speakText',
+            text: text
+        }, (response) => {
+            const error = chrome.runtime.lastError;
+            if (error) {
+                reject(new Error(error.message));
+                return;
+            }
+            if (response && response.success) resolve(response);
+            else reject(new Error(response ? response.error : 'Unknown error'));
+        });
+    });
+}
+
+function getBrowserSpeechVoice() {
+    const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+    return voices.find((voice) => voice.lang === 'ja-JP')
+        || voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith('ja'))
+        || null;
+}
+
+function speakWithBrowserSpeech(text) {
+    return new Promise((resolve, reject) => {
+        if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+            reject(new Error('Browser speech API is unavailable'));
+            return;
+        }
+
+        const speak = () => {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 0.9;
+            utterance.pitch = 1.0;
+            utterance.voice = getBrowserSpeechVoice();
+            utterance.onstart = () => resolve({ success: true, engine: 'browser' });
+            utterance.onerror = (event) => reject(new Error(event.error || 'Browser speech failed'));
+
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+        };
+
+        if (window.speechSynthesis.getVoices().length > 0) {
+            speak();
+            return;
+        }
+
+        let handled = false;
+        const timer = setTimeout(() => {
+            if (handled) return;
+            handled = true;
+            window.speechSynthesis.onvoiceschanged = null;
+            speak();
+        }, 500);
+
+        window.speechSynthesis.onvoiceschanged = () => {
+            if (handled) return;
+            handled = true;
+            clearTimeout(timer);
+            window.speechSynthesis.onvoiceschanged = null;
+            speak();
+        };
+    });
+}
+
+function stopSpeech() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    chrome.runtime.sendMessage({ action: 'stopSpeech' }, () => {
+        const error = chrome.runtime.lastError;
+        if (error) console.warn('Stop speech failed:', error.message);
+    });
+}
+
+async function readSelectionAloud() {
+    const selection = window.getSelection();
+    let text = "";
+
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+        text = getCleanTextFromRange(selection.getRangeAt(0));
+        if (text) lastReadableSelectionText = text;
+    }
+
+    if (!text) text = lastReadableSelectionText;
+
+    if (!text) {
+        showToast('No text selected', false);
+        return;
+    }
+
+    try {
+        await speakText(text);
+        showToast('Reading: ON', true);
+    } catch (error) {
+        console.warn('Chrome TTS failed, trying browser speech:', error);
+        try {
+            await speakWithBrowserSpeech(text);
+            showToast('Reading: ON', true);
+        } catch (fallbackError) {
+            console.error('TTS failed:', fallbackError);
+            showToast(fallbackError.message || 'Reading failed', false);
+        }
+    }
+}
+
 /**
  * 全网页注音逻辑
  */
@@ -114,6 +225,7 @@ async function annotateAllKanji() {
                 tokens.forEach(token => {
                     if (token.ruby) {
                         const rubyEl = document.createElement('ruby');
+                        rubyEl.className = 'kanjiruby-annotation';
                         rubyEl.appendChild(document.createTextNode(token.surface));
                         const rtEl = document.createElement('rt');
                         rtEl.style.cssText = "user-select:none; -webkit-user-select:none; pointer-events:none;";
@@ -132,7 +244,7 @@ async function annotateAllKanji() {
 }
 
 function clearAllAnnotations() {
-    const rubies = Array.from(document.querySelectorAll('ruby'));
+    const rubies = Array.from(document.querySelectorAll('ruby.kanjiruby-annotation, ruby.kanjiruby-translation'));
     rubies.forEach(ruby => {
         const clone = ruby.cloneNode(true);
         clone.querySelectorAll('rt').forEach(rt => rt.remove());
@@ -173,9 +285,14 @@ async function processSelection(range, forceTranslate = false) {
         tokens.forEach(token => {
             if ((isEnabled || globalEnabled) && token.ruby) {
                 const rubyEl = document.createElement('ruby');
+                rubyEl.className = 'kanjiruby-annotation';
                 rubyEl.style.rubyPosition = 'over';
                 rubyEl.style.webkitRubyPosition = 'over';
-                rubyEl.innerHTML = `${token.surface}<rt style="user-select:none; -webkit-user-select:none; pointer-events:none;">${token.reading}</rt>`;
+                rubyEl.appendChild(document.createTextNode(token.surface));
+                const rtEl = document.createElement('rt');
+                rtEl.style.cssText = "user-select:none; -webkit-user-select:none; pointer-events:none;";
+                rtEl.textContent = token.reading;
+                rubyEl.appendChild(rtEl);
                 wrapper.appendChild(rubyEl);
             } else {
                 const parts = (token.surface || "").split('\n');
@@ -188,6 +305,7 @@ async function processSelection(range, forceTranslate = false) {
 
         if ((forceTranslate || translateEnabled) && translation) {
             const outerRuby = document.createElement('ruby');
+            outerRuby.className = 'kanjiruby-translation';
             outerRuby.style.rubyPosition = 'under';
             outerRuby.style.webkitRubyPosition = 'under'; 
             outerRuby.appendChild(wrapper);
@@ -211,6 +329,8 @@ document.addEventListener('mouseup', () => {
     if (selection.rangeCount === 0) return;
     const range = selection.getRangeAt(0);
     if (range.collapsed) return;
+    const selectedText = getCleanTextFromRange(range);
+    if (selectedText) lastReadableSelectionText = selectedText;
 
     const getTopRuby = (node) => {
         let el = node.nodeType === 3 ? node.parentElement : node;
@@ -224,12 +344,39 @@ document.addEventListener('mouseup', () => {
     processSelection(range);
 });
 
-chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'startGlobalAnnotation') annotateAllKanji();
-    else if (request.action === 'clearAllAnnotations') clearAllAnnotations();
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'startGlobalAnnotation') {
+        annotateAllKanji()
+            .then(() => sendResponse({ success: true }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true;
+    } else if (request.action === 'clearAllAnnotations') {
+        clearAllAnnotations();
+        sendResponse({ success: true });
+    } else if (request.action === 'readSelectionAloud') {
+        readSelectionAloud()
+            .then(() => sendResponse({ success: true }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true;
+    } else if (request.action === 'stopSpeech') {
+        stopSpeech();
+        showToast('Reading: OFF', false);
+        sendResponse({ success: true });
+    }
 });
 
 document.addEventListener('keydown', (e) => {
+    if (ttsEnabled && e.key === 'Shift' && !e.repeat) {
+        const now = Date.now();
+        if (now - lastShiftPressTime < 500) {
+            lastShiftPressTime = 0;
+            e.preventDefault();
+            readSelectionAloud();
+            return;
+        }
+        lastShiftPressTime = now;
+    }
+
     if (!doubleTapEnabled) return;
     if (e.key === 'Control') {
         const now = Date.now();
