@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-fugashi
-unidic-lite
-pydantic
-httpx
-deep-translator
