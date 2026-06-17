@@ -15,13 +15,13 @@ Web ページ上の日本語テキストを選択すると、KanjiRuby はその
 ふりがな追加前：
 
 <p align="center">
-  <img src="assets/Snipaste_2026-06-17_01-30-35.png" alt="ふりがな追加前の日本語ページ本文" width="720">
+  <img src="assets/Snipaste_2026-06-17_01-30-35.png" alt="ふりがな追加前の日本語ページ本文" width="500">
 </p>
 
 ふりがな追加後：
 
 <p align="center">
-  <img src="assets/Snipaste_2026-06-17_01-38-54.png" alt="ふりがなを追加した日本語ページ本文" width="720">
+  <img src="assets/Snipaste_2026-06-17_01-38-54.png" alt="ふりがなを追加した日本語ページ本文" width="500">
 </p>
 
 ### 没入型翻訳
@@ -29,7 +29,7 @@ Web ページ上の日本語テキストを選択すると、KanjiRuby はその
 翻訳モードをオンにした状態で Web ページ上の日本語テキストを選択すると、拡張機能がバックエンドへ翻訳をリクエストし、中国語訳を原文の下に表示します。
 
 <p align="center">
-  <img src="assets/Snipaste_2026-06-17_01-33-48.png" alt="没入型翻訳の表示例" width="720">
+  <img src="assets/Snipaste_2026-06-17_01-33-48.png" alt="没入型翻訳の表示例" width="900">
 </p>
 
 ### 拡張機能パネル
